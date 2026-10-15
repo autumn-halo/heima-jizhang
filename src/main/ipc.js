@@ -255,7 +255,8 @@ function registerExpenseIpc(db) {
       const items = db
         .prepare(
           `SELECT e.id, e.amount_cents, e.expense_date, e.note,
-                  sub.name AS sub_name, major.name AS major_name
+                  sub.id AS sub_id, sub.name AS sub_name,
+                  major.id AS major_id, major.name AS major_name
            FROM expenses e
            JOIN categories sub ON e.category_id = sub.id
            JOIN categories major ON sub.parent_id = major.id
