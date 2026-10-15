@@ -178,6 +178,18 @@ try {
   // 8. 最终应回到 11 个一级大类
   const finalCount = await page.evaluate(() => document.querySelectorAll('.major-card').length)
   await assert(finalCount === 11, `测试后恢复为 11 个一级大类（实际 ${finalCount}）`, page)
+
+  // 9. 手动备份：点击「立即备份」→ 提示备份成功
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '立即备份')
+    btn.click()
+  })
+  await page.waitForTimeout(900)
+  await assert(
+    await page.evaluate(() => document.body.innerText.includes('备份成功')),
+    '手动备份成功并提示',
+    page
+  )
 } finally {
   await app.close().catch(() => {})
 }

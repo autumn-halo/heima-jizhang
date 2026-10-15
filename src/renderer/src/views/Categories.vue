@@ -2,9 +2,34 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import { api } from '../api'
 import { useCategoriesStore } from '../stores/categories'
 
 const store = useCategoriesStore()
+
+// 数据目录与手动备份
+const dataPath = ref('')
+const backingUp = ref(false)
+
+async function loadDataPath() {
+  try {
+    dataPath.value = (await api.getDataPath()).dataDir
+  } catch {
+    dataPath.value = '读取失败'
+  }
+}
+
+async function runBackup() {
+  backingUp.value = true
+  try {
+    const res = await api.backup.run()
+    ElMessage.success(`备份成功，已保存到：${res.path}`)
+  } catch (err) {
+    ElMessage.error(err.message)
+  } finally {
+    backingUp.value = false
+  }
+}
 
 // 新增/重命名弹窗状态
 const dialogVisible = ref(false)
@@ -17,7 +42,10 @@ let dialogTarget = null
 // 小类标签配色循环（让界面更活泼）
 const TAG_TYPES = ['primary', 'success', 'warning', 'danger', 'info']
 
-onMounted(() => store.load())
+onMounted(() => {
+  store.load()
+  loadDataPath()
+})
 
 function openCreateMajor() {
   dialogMode = 'create-major'
@@ -136,6 +164,18 @@ async function removeCategory(item) {
       </el-card>
     </template>
 
+    <!-- 数据与备份 -->
+    <el-card shadow="never" class="backup-card">
+      <div class="backup-row">
+        <div class="backup-info">
+          <div class="backup-title">数据与备份</div>
+          <div class="backup-path">数据保存在：{{ dataPath }}</div>
+          <div class="backup-hint">每天首次打开软件会自动备份，也可随时手动备份</div>
+        </div>
+        <el-button type="primary" :loading="backingUp" @click="runBackup">立即备份</el-button>
+      </div>
+    </el-card>
+
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="360px">
       <el-input
         v-model="dialogInput"
@@ -204,5 +244,35 @@ async function removeCategory(item) {
 .no-sub {
   color: #a8abb2;
   font-size: 13px;
+}
+
+.backup-card {
+  margin-top: 16px;
+}
+
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.backup-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 4px;
+}
+
+.backup-path {
+  font-size: 13px;
+  color: #606266;
+  word-break: break-all;
+}
+
+.backup-hint {
+  font-size: 12px;
+  color: #a8abb2;
+  margin-top: 2px;
 }
 </style>
