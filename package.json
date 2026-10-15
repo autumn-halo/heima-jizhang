@@ -1,5 +1,6 @@
 {
   "name": "heima-jizhang",
+  "productName": "黑马记账",
   "version": "1.0.0",
   "description": "黑马记账 - 个人本地记账软件",
   "main": "./out/main/index.js",

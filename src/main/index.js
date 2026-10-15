@@ -2,6 +2,25 @@ import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { openDatabase } from './db'
+import { backupIfNeeded } from './backup'
+
+// 数据库实例（初始化后供 IPC 层使用）
+let db = null
+
+/** 供 IPC 层获取数据库实例 */
+export function getDb() {
+  return db
+}
+
+/** 初始化数据层：打开数据库 + 执行每日备份 */
+function initData() {
+  // 数据库放在系统用户数据目录：卸载软件后数据不丢失
+  const dataDir = app.getPath('userData')
+  db = openDatabase(join(dataDir, '黑马记账.db'))
+  // 执行每日备份（同一天内只做一次，很快）
+  backupIfNeeded(db, join(dataDir, 'backups'))
+}
 
 function createWindow() {
   // Create the browser window.
@@ -51,6 +70,8 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
+
+  initData()
 
   createWindow()
 
