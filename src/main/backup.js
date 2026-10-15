@@ -15,15 +15,16 @@ function localDateStr(d = new Date()) {
 }
 
 /**
- * 按需执行每日备份（同一天内只做一次）
+ * 按需执行每日备份（同一天内只做一次；force=true 时强制备份）
  * @param {import('node:sqlite').DatabaseSync} db 数据库实例
  * @param {string} backupDir 备份目录完整路径
+ * @param {boolean} [force] 是否强制备份（手动备份用）
  */
-export function backupIfNeeded(db, backupDir) {
+export function backupIfNeeded(db, backupDir, force = false) {
   const today = localDateStr()
   try {
     // 今天已经备份过就不重复做
-    if (getSetting(db, 'last_backup_date') === today) {
+    if (!force && getSetting(db, 'last_backup_date') === today) {
       return { skipped: true }
     }
 

@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { openDatabase } from './db'
 import { backupIfNeeded } from './backup'
+import { registerIpc } from './ipc'
 
 // 数据库实例（初始化后供 IPC 层使用）
 let db = null
@@ -72,6 +73,9 @@ app.whenReady().then(() => {
   })
 
   initData()
+
+  // 注册界面与主进程之间的全部通信通道
+  registerIpc(db)
 
   createWindow()
 

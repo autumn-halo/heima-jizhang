@@ -86,7 +86,13 @@ try {
     )
     const routeOk = pageTitle === name
     console.log(`页面 ${name}: 标题「${pageTitle}」${routeOk ? '✓ 正确' : '✗ 不匹配!'}`)
-    await page.screenshot({ path: join(shotDir, file) })
+    // 截图尽力而为：Electron 窗口失焦时截图可能卡住，超时则跳过（不影响验证）
+    await page.bringToFront().catch(() => {})
+    try {
+      await page.screenshot({ path: join(shotDir, file), timeout: 8000 })
+    } catch {
+      console.log(`  （截图超时跳过 ${file}）`)
+    }
   }
 
   // 汇总报错
