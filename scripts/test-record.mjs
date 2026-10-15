@@ -165,7 +165,19 @@ try {
     page
   )
 
-  // 5. 记一笔收入：切换到「收入」，账户改为银行卡，选「工资收入 → 工资」，金额 5000
+  // 5. 记一笔收入：切换到「收入」，账户选具体银行卡「测试卡」，选「工资收入 → 工资」，金额 5000
+  // 先通过接口在「银行卡」下创建一张测试卡
+  const testCardCreated = await page.evaluate(async () => {
+    const accounts = (await window.api.accounts.list()).data
+    const bank = accounts.find((a) => a.name === '银行卡')
+    const res = await window.api.accounts.create({ name: '测试卡', parentId: bank.id })
+    return res.ok
+  })
+  await assert(testCardCreated, '创建具体卡「测试卡」', page)
+  // 刷新页面让账户下拉加载新建的测试卡
+  await page.reload()
+  await page.waitForSelector('.app-menu', { timeout: 15000 })
+  await page.waitForTimeout(1000)
   const incomeToggle = await page.evaluate(() => {
     const el = [...document.querySelectorAll('.el-radio-button')].find(
       (e) => e.textContent.trim() === '收入'
@@ -176,18 +188,18 @@ try {
   })
   await assert(incomeToggle, '切换到收入类型', page)
   await page.waitForTimeout(400)
-  // 切换账户为银行卡（el-select 需要真实点击事件）
+  // 选择具体卡「测试卡」（el-select 需要真实点击事件）
   await page.click('.el-select')
   await page.waitForSelector('.el-select-dropdown__item', { timeout: 5000 })
   const accountSwitched = await page.evaluate(() => {
     const item = [...document.querySelectorAll('.el-select-dropdown__item')].find(
-      (e) => e.textContent.trim() === '银行卡'
+      (e) => e.textContent.trim() === '测试卡'
     )
     if (!item) return false
     item.click()
     return true
   })
-  await assert(accountSwitched, '账户切换为银行卡', page)
+  await assert(accountSwitched, '账户切换为具体卡「测试卡」', page)
   await page.waitForTimeout(400)
   await page.fill('.amount-input input', '5000')
   await page.evaluate(() => document.querySelector('.el-cascader').click())
@@ -207,7 +219,7 @@ try {
     page
   )
 
-  // 6. 习惯记忆：重新打开记一笔页，应延续上次的选择（收入 + 银行卡）
+  // 6. 习惯记忆：重新打开记一笔页，应延续上次的选择（收入 + 测试卡）
   await page.reload()
   await page.waitForSelector('.app-menu', { timeout: 15000 })
   await page.waitForTimeout(1000)
@@ -221,10 +233,24 @@ try {
     () => document.querySelector('.el-select')?.textContent.trim() ?? ''
   )
   await assert(
-    typeRemembered && accountRemembered.includes('银行卡'),
-    `重开页面延续上次选择：收入 + 银行卡（实际：${accountRemembered}）`,
+    typeRemembered && accountRemembered.includes('测试卡'),
+    `重开页面延续上次选择：收入 + 测试卡（实际：${accountRemembered}）`,
     page
   )
+
+  // 7. 清理：删除测试卡挂着的记录，再删除测试卡
+  const cleanupOk = await page.evaluate(async () => {
+    const accounts = (await window.api.accounts.list()).data
+    const card = accounts.find((a) => a.name === '测试卡')
+    if (!card) return true
+    const listRes = await window.api.expenses.list({ accountId: card.id, page: 1, pageSize: 100 })
+    for (const item of listRes.data.items) {
+      await window.api.expenses.delete(item.id)
+    }
+    const delRes = await window.api.accounts.delete(card.id)
+    return delRes.ok
+  })
+  await assert(cleanupOk, '清理测试卡与测试记录', page)
 } finally {
   await app.close().catch(() => {})
 }

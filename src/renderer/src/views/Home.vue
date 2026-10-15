@@ -57,8 +57,9 @@ async function loadList() {
       pageSize: 10000 // 一次取出全部记录，用于按月分组
     })
     list.value = data.items
-    // 首次加载时默认展开最新一个月
-    if (!openMonths.value.length && data.items.length) {
+    // 若当前展开的月份已不在结果中（如切换筛选后），自动展开最新一个月
+    const monthNames = new Set(data.items.map((i) => i.expense_date.slice(0, 7)))
+    if (data.items.length && !openMonths.value.some((m) => monthNames.has(m))) {
       openMonths.value = [data.items[0].expense_date.slice(0, 7)]
     }
   } catch (err) {
@@ -229,14 +230,20 @@ onMounted(() => {
             placeholder="全部账户"
             clearable
             size="small"
-            style="width: 130px"
+            style="width: 150px"
           >
-            <el-option
-              v-for="acc in accountsStore.list"
-              :key="acc.id"
-              :label="acc.name"
-              :value="acc.id"
-            />
+            <el-option-group
+              v-for="group in accountsStore.accountGroups"
+              :key="group.label"
+              :label="group.label"
+            >
+              <el-option
+                v-for="opt in group.options"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-option-group>
           </el-select>
           <el-radio-group v-model="typeFilter" size="small">
             <el-radio-button value="">全部</el-radio-button>
@@ -313,12 +320,18 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="账户">
           <el-select v-model="editForm.accountId" placeholder="请选择账户" clearable style="width: 100%">
-            <el-option
-              v-for="acc in accountsStore.list"
-              :key="acc.id"
-              :label="acc.name"
-              :value="acc.id"
-            />
+            <el-option-group
+              v-for="group in accountsStore.accountGroups"
+              :key="group.label"
+              :label="group.label"
+            >
+              <el-option
+                v-for="opt in group.options"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-option-group>
           </el-select>
         </el-form-item>
         <el-form-item label="分类">

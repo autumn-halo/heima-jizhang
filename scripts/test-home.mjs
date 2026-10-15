@@ -11,6 +11,11 @@ delete process.env.ELECTRON_RUN_AS_NODE
 const dbPath = join(process.env.APPDATA, '黑马记账', '黑马记账.db')
 const seed = new DatabaseSync(dbPath)
 seed.exec('DELETE FROM expenses')
+// 清理并重建「银行卡」下的测试具体卡「招商银行」
+seed.exec("DELETE FROM accounts WHERE name = '招商银行'")
+seed.exec(
+  "INSERT INTO accounts (name, parent_id, sort_order) SELECT '招商银行', id, 1 FROM accounts WHERE name = '银行卡'"
+)
 const getSubId = seed.prepare(`
   SELECT sub.id FROM categories sub
   JOIN categories major ON sub.parent_id = major.id
@@ -19,7 +24,7 @@ const getAccountId = seed.prepare('SELECT id FROM accounts WHERE name = ?')
 const ins = seed.prepare(
   'INSERT INTO expenses (amount_cents, category_id, expense_date, note, type, account_id) VALUES (?, ?, ?, ?, ?, ?)'
 )
-// [日期, 一级分类, 二级分类, 金额(分), 备注, 账户]（微信17 / 支付宝6 / 银行卡2）
+// [日期, 一级分类, 二级分类, 金额(分), 备注, 账户]（微信17 / 支付宝4 / 银行卡2 / 招商银行2）
 const expenseRows = [
   ['2026-10-15', '学习教育', '学费培训', 50000, '', '银行卡'],
   ['2026-10-14', '餐饮饮食', '请客聚餐', 26000, '部门聚餐', '微信'],
@@ -41,10 +46,10 @@ const expenseRows = [
   ['2026-09-10', '交通出行', '加油充电', 30000, '', '支付宝'],
   ['2026-09-08', '餐饮饮食', '外卖', 3500, '加班聚餐', '微信'],
   ['2026-09-05', '餐饮饮食', '早餐', 1000, '', '微信'],
-  ['2026-08-28', '交通出行', '火车高铁', 38000, '', '支付宝'],
+  ['2026-08-28', '交通出行', '火车高铁', 38000, '', '招商银行'],
   ['2026-08-20', '休闲娱乐', '电影演出', 4500, '', '微信'],
   ['2026-08-15', '居住住房', '电费', 14500, '', '微信'],
-  ['2026-08-10', '交通出行', '打车', 5500, '出差聚餐车费', '支付宝'],
+  ['2026-08-10', '交通出行', '打车', 5500, '出差聚餐车费', '招商银行'],
   ['2026-08-05', '餐饮饮食', '午餐', 2200, '', '微信']
 ]
 // 收入：银行卡2 / 微信2
@@ -232,7 +237,7 @@ try {
     page
   )
 
-  // 5.5 按账户筛选「支付宝」→ 3 个月分组，10月 2 条（房租、打车）
+  // 5.5 按账户筛选「支付宝」→ 2 个月分组，10月 2 条（房租、打车）
   // （el-select 需要真实点击事件）
   await page.click('.list-filters .el-select')
   await page.waitForSelector('.el-select-dropdown__item', { timeout: 5000 })
@@ -246,7 +251,7 @@ try {
   })
   await assert(selectAlipay, '选择账户筛选「支付宝」', page)
   await page.waitForTimeout(800)
-  await assert((await monthCount(page)) === 3, '筛选支付宝后 3 个月分组', page)
+  await assert((await monthCount(page)) === 2, '筛选支付宝后 2 个月分组', page)
   await assert((await activeRowCount(page)) === 2, '支付宝 10月 2 条', page)
   const alipayRow = await firstActiveRowText(page)
   await assert(
@@ -263,6 +268,38 @@ try {
     return true
   })
   await assert(cleared, '清除账户筛选', page)
+  await page.waitForTimeout(800)
+
+  // 5.6 按具体卡筛选「招商银行」→ 1 个月分组（8月），2 条
+  await page.click('.list-filters .el-select')
+  await page.waitForSelector('.el-select-dropdown__item', { timeout: 5000 })
+  const selectCard = await page.evaluate(() => {
+    const item = [...document.querySelectorAll('.el-select-dropdown__item')].find(
+      (e) => e.textContent.trim() === '招商银行'
+    )
+    if (!item) return false
+    item.click()
+    return true
+  })
+  await assert(selectCard, '选择具体卡筛选「招商银行」', page)
+  await page.waitForTimeout(800)
+  await assert((await monthCount(page)) === 1, '筛选招商银行后 1 个月分组', page)
+  await assert((await activeRowCount(page)) === 2, '招商银行 8月 2 条', page)
+  const cardRow = await firstActiveRowText(page)
+  await assert(
+    cardRow.includes('火车高铁') && cardRow.includes('招商银行'),
+    `招商银行首行为火车高铁（实际：${cardRow}）`,
+    page
+  )
+  // 清除账户筛选
+  await page.hover('.list-filters .el-select')
+  const cleared2 = await page.evaluate(() => {
+    const clear = document.querySelector('.list-filters .el-select .el-select__clear')
+    if (!clear) return false
+    clear.click()
+    return true
+  })
+  await assert(cleared2, '清除具体卡筛选', page)
   await page.waitForTimeout(800)
 
   // 6. 编辑「10月工资」收入：15000 → 16000，卡片联动 ¥16,500.00
@@ -331,6 +368,14 @@ try {
 } finally {
   await app.close().catch(() => {})
 }
+
+// 清理测试具体卡（只删招商银行的 2 笔 8 月记录与卡本身，不影响 10/9 月数据）
+const cleanupDb = new DatabaseSync(dbPath)
+cleanupDb.exec(
+  "DELETE FROM expenses WHERE account_id = (SELECT id FROM accounts WHERE name = '招商银行')"
+)
+cleanupDb.exec("DELETE FROM accounts WHERE name = '招商银行'")
+cleanupDb.close()
 
 console.log(failed === 0 ? '首页测试：全部通过 ✓' : `首页测试：${failed} 项未通过`)
 process.exit(failed === 0 ? 0 : 1)

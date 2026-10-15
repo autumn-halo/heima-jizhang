@@ -162,7 +162,10 @@ function registerCategoryIpc(db) {
 function registerAccountIpc(db) {
   ipcMain.handle('accounts:list', () => {
     try {
-      const rows = db.prepare('SELECT id, name FROM accounts ORDER BY sort_order, id').all()
+      // 返回带 parent_id 的完整列表，界面端组装两级结构
+      const rows = db
+        .prepare('SELECT id, name, parent_id FROM accounts ORDER BY sort_order, id')
+        .all()
       return ok(rows)
     } catch (err) {
       return fail('读取账户失败：' + err.message)
@@ -172,14 +175,26 @@ function registerAccountIpc(db) {
   ipcMain.handle('accounts:create', (_e, payload) => {
     try {
       const name = String(payload?.name ?? '').trim()
+      const parentId = payload?.parentId ?? null
       if (!name) return fail('账户名称不能为空')
       if (name.length > MAX_NAME_LENGTH) return fail(`账户名称不能超过 ${MAX_NAME_LENGTH} 个字`)
+      // 二级账户（具体卡）的父必须是一级账户
+      if (parentId !== null) {
+        const parent = db
+          .prepare('SELECT id FROM accounts WHERE id = ? AND parent_id IS NULL')
+          .get(parentId)
+        if (!parent) return fail('父账户不存在，请刷新后重试')
+      }
+      // 账户名称全局唯一（含具体卡）
       const dup = db.prepare('SELECT id FROM accounts WHERE name = ?').get(name)
       if (dup) return fail('已存在同名账户')
-      const { m } = db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM accounts').get()
+      // 排在同级最后
+      const { m } = db
+        .prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM accounts WHERE parent_id IS ?')
+        .get(parentId)
       const { lastInsertRowid } = db
-        .prepare('INSERT INTO accounts (name, sort_order) VALUES (?, ?)')
-        .run(name, m + 1)
+        .prepare('INSERT INTO accounts (name, parent_id, sort_order) VALUES (?, ?, ?)')
+        .run(name, parentId, m + 1)
       return ok({ id: Number(lastInsertRowid) })
     } catch (err) {
       return fail('新增账户失败：' + err.message)
@@ -207,6 +222,14 @@ function registerAccountIpc(db) {
     try {
       const target = db.prepare('SELECT id FROM accounts WHERE id = ?').get(id)
       if (!target) return fail('账户不存在，请刷新后重试')
+      // 一级账户下还有具体卡时拒绝删除
+      const { c: childCount } = db
+        .prepare('SELECT COUNT(*) AS c FROM accounts WHERE parent_id = ?')
+        .get(id)
+      if (childCount > 0) {
+        return fail(`该账户下还有 ${childCount} 个具体账户，请先删除它们。`)
+      }
+      // 有收支记录时拒绝删除
       const { c } = db
         .prepare('SELECT COUNT(*) AS c FROM expenses WHERE account_id = ?')
         .get(id)

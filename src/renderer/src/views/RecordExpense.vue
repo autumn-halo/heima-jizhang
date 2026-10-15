@@ -20,10 +20,10 @@ onMounted(async () => {
   }
   // 跟随用户习惯：延续上次使用的账户（不存在则回退到第一个账户）
   const lastId = Number(localStorage.getItem('heima-last-account-id'))
-  if (accountsStore.list.some((a) => a.id === lastId)) {
+  if (accountsStore.rows.some((a) => a.id === lastId)) {
     form.accountId = lastId
-  } else if (accountsStore.list.length) {
-    form.accountId = accountsStore.list[0].id
+  } else if (accountsStore.rows.length) {
+    form.accountId = accountsStore.rows[0].id
   }
   // 自动聚焦金额输入框
   nextTick(() => amountInputRef.value?.focus())
@@ -144,12 +144,18 @@ async function submit() {
         </el-form-item>
         <el-form-item label="账户">
           <el-select v-model="form.accountId" placeholder="请选择账户" style="width: 100%">
-            <el-option
-              v-for="acc in accountsStore.list"
-              :key="acc.id"
-              :label="acc.name"
-              :value="acc.id"
-            />
+            <el-option-group
+              v-for="group in accountsStore.accountGroups"
+              :key="group.label"
+              :label="group.label"
+            >
+              <el-option
+                v-for="opt in group.options"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-option-group>
           </el-select>
         </el-form-item>
         <el-form-item label="分类">

@@ -61,10 +61,12 @@ export function openDatabase(dbPath) {
   )
 
   // 账户表（v1.2 多账户：微信/支付宝/银行卡等；必须先于 expenses 表创建）
+  // v1.3 起支持两级：parent_id 为 NULL 是一级账户，非 NULL 是一级账户下的具体卡
   db.exec(`
     CREATE TABLE IF NOT EXISTS accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
+      parent_id INTEGER REFERENCES accounts(id),
       sort_order INTEGER NOT NULL DEFAULT 0
     )
   `)
@@ -134,6 +136,11 @@ function migrate(db) {
   const catCols = db.prepare('PRAGMA table_info(categories)').all().map((c) => c.name)
   if (!catCols.includes('kind')) {
     db.exec("ALTER TABLE categories ADD COLUMN kind TEXT NOT NULL DEFAULT 'expense'")
+  }
+  // v1.3：账户表增加 parent_id（两级账户），旧账户自动成为一级账户
+  const accCols = db.prepare('PRAGMA table_info(accounts)').all().map((c) => c.name)
+  if (!accCols.includes('parent_id')) {
+    db.exec('ALTER TABLE accounts ADD COLUMN parent_id INTEGER REFERENCES accounts(id)')
   }
 }
 
