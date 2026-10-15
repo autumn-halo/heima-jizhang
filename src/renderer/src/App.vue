@@ -1,6 +1,7 @@
 <script setup>
 import { useRoute } from 'vue-router'
 import { EditPen, List, DataAnalysis, Menu as MenuIcon } from '@element-plus/icons-vue'
+import logoImg from './assets/logo.png'
 
 const route = useRoute()
 </script>
@@ -10,7 +11,7 @@ const route = useRoute()
     <!-- 左侧导航栏 -->
     <el-aside width="200px" class="app-aside">
       <div class="logo">
-        <span class="logo-icon">🐴</span>
+        <img class="logo-img" :src="logoImg" alt="黑马记账" />
         <span class="logo-text">黑马记账</span>
       </div>
       <el-menu router :default-active="route.path" class="app-menu">
@@ -59,8 +60,11 @@ const route = useRoute()
   padding: 20px 16px 16px;
 }
 
-.logo-icon {
-  font-size: 26px;
+.logo-img {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  object-fit: cover;
 }
 
 .logo-text {

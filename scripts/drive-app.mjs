@@ -47,6 +47,18 @@ try {
   })
   console.log('菜单项数量:', menuInfo.count, '文字:', menuInfo.labels.join('/'))
 
+  // 界面 logo 检查
+  const logoCheck = await page.evaluate(() => {
+    const img = document.querySelector('.logo-img')
+    return img
+      ? { found: true, loaded: img.complete && img.naturalWidth > 0 }
+      : { found: false }
+  })
+  console.log(
+    '界面logo:',
+    logoCheck.found && logoCheck.loaded ? '图片已加载 ✓' : '异常: ' + JSON.stringify(logoCheck)
+  )
+
   // 样式断言：明亮清爽主题（浅灰内容区 + 白色侧边栏）
   const styleInfo = await page.evaluate(() => {
     const main = document.querySelector('.app-main')
