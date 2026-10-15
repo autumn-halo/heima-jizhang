@@ -1,6 +1,6 @@
 <script setup>
 import { useRoute } from 'vue-router'
-import { EditPen, List, DataAnalysis, Menu as MenuIcon } from '@element-plus/icons-vue'
+import { House, EditPen, DataAnalysis, Menu as MenuIcon } from '@element-plus/icons-vue'
 import logoImg from './assets/logo.png'
 
 const route = useRoute()
@@ -16,12 +16,12 @@ const route = useRoute()
       </div>
       <el-menu router :default-active="route.path" class="app-menu">
         <el-menu-item index="/">
+          <el-icon><House /></el-icon>
+          <span>首页</span>
+        </el-menu-item>
+        <el-menu-item index="/record">
           <el-icon><EditPen /></el-icon>
           <span>记一笔</span>
-        </el-menu-item>
-        <el-menu-item index="/transactions">
-          <el-icon><List /></el-icon>
-          <span>支出流水</span>
         </el-menu-item>
         <el-menu-item index="/stats">
           <el-icon><DataAnalysis /></el-icon>

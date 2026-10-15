@@ -53,10 +53,10 @@ try {
   await page.waitForSelector('.stat-card', { timeout: 10000 })
   await page.waitForTimeout(1200)
 
-  // 1. 默认本月（2026-10）：总支出 ¥3,679.34、日均 ¥118.69、11 笔
+  // 1. 默认本月（2026-10）：总支出 ¥4,179.34、日均 ¥134.82、12 笔
   const octCards = await readCards(page)
   await assert(
-    octCards[0] === '¥3,679.34' && octCards[1] === '¥118.69' && octCards[2] === '11 笔',
+    octCards[0] === '¥4,179.34' && octCards[1] === '¥134.82' && octCards[2] === '12 笔',
     `本月卡片数值正确（实际：${octCards.join(' / ')}）`,
     page
   )
@@ -71,8 +71,8 @@ try {
     return res.ok ? res.data : null
   })
   await assert(
-    apiCheck && apiCheck.totalCents === 367934 && apiCheck.count === 11,
-    `统计接口数值正确（总 367934 分 / 11 笔）`,
+    apiCheck && apiCheck.totalCents === 417934 && apiCheck.count === 12,
+    `统计接口数值正确（总 417934 分 / 12 笔）`,
     page
   )
 

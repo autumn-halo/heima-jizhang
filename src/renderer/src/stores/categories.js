@@ -12,8 +12,8 @@ export const useCategoriesStore = defineStore('categories', {
       this.tree = await api.categories.list()
       this.loaded = true
     },
-    async add(name, parentId) {
-      await api.categories.create({ name, parentId })
+    async add(name, parentId, kind) {
+      await api.categories.create({ name, parentId, kind })
       await this.load()
     },
     async rename(id, name) {

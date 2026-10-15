@@ -73,12 +73,21 @@ try {
   })
   await page.waitForSelector('.major-card', { timeout: 10000 })
 
-  // 1. 内置分类应为 11 个一级大类
-  const majorCount = await page.evaluate(() => document.querySelectorAll('.major-card').length)
-  await assert(majorCount === 11, `内置 11 个一级大类（实际 ${majorCount}）`, page)
+  // 1. 内置分类：支出 11 个一级大类 + 收入 3 个一级大类
+  const expenseCount = await page.evaluate(
+    () => document.querySelectorAll('[data-kind="expense"] .major-card').length
+  )
+  const incomeCount = await page.evaluate(
+    () => document.querySelectorAll('[data-kind="income"] .major-card').length
+  )
+  await assert(
+    expenseCount === 11 && incomeCount === 3,
+    `内置分类正确（支出 ${expenseCount} 个 + 收入 ${incomeCount} 个）`,
+    page
+  )
 
-  // 2. 新增一级分类「测试大类」
-  await clickButton(page, '新增一级分类')
+  // 2. 新增支出分类「测试大类」
+  await clickButton(page, '新增支出分类')
   await page.waitForSelector('.el-dialog input', { timeout: 5000 })
   await page.fill('.el-dialog input', '测试大类')
   await clickButton(page, '确定')
@@ -89,8 +98,8 @@ try {
     page
   )
 
-  // 3. 同名一级分类应被拒绝
-  await clickButton(page, '新增一级分类')
+  // 3. 同名支出分类应被拒绝
+  await clickButton(page, '新增支出分类')
   await page.waitForSelector('.el-dialog input')
   await page.fill('.el-dialog input', '测试大类')
   await clickButton(page, '确定')
@@ -175,9 +184,18 @@ try {
     page
   )
 
-  // 8. 最终应回到 11 个一级大类
-  const finalCount = await page.evaluate(() => document.querySelectorAll('.major-card').length)
-  await assert(finalCount === 11, `测试后恢复为 11 个一级大类（实际 ${finalCount}）`, page)
+  // 8. 最终应恢复为支出 11 个 + 收入 3 个一级大类
+  const finalExpense = await page.evaluate(
+    () => document.querySelectorAll('[data-kind="expense"] .major-card').length
+  )
+  const finalIncome = await page.evaluate(
+    () => document.querySelectorAll('[data-kind="income"] .major-card').length
+  )
+  await assert(
+    finalExpense === 11 && finalIncome === 3,
+    `测试后恢复原状（支出 ${finalExpense} 个 + 收入 ${finalIncome} 个）`,
+    page
+  )
 
   // 9. 手动备份：点击「立即备份」→ 提示备份成功
   await page.evaluate(() => {

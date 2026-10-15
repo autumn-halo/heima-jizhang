@@ -1,6 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import Home from '../views/Home.vue'
 import RecordExpense from '../views/RecordExpense.vue'
-import Transactions from '../views/Transactions.vue'
 import Stats from '../views/Stats.vue'
 import Categories from '../views/Categories.vue'
 
@@ -8,13 +8,8 @@ import Categories from '../views/Categories.vue'
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', name: 'record', component: RecordExpense, meta: { title: '记一笔' } },
-    {
-      path: '/transactions',
-      name: 'transactions',
-      component: Transactions,
-      meta: { title: '支出流水' }
-    },
+    { path: '/', name: 'home', component: Home, meta: { title: '首页' } },
+    { path: '/record', name: 'record', component: RecordExpense, meta: { title: '记一笔' } },
     { path: '/stats', name: 'stats', component: Stats, meta: { title: '统计图表' } },
     {
       path: '/categories',

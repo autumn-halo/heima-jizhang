@@ -1,11 +1,15 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { api } from '../api'
 import { useCategoriesStore } from '../stores/categories'
 
 const store = useCategoriesStore()
+
+// 按收支类型分组
+const expenseMajors = computed(() => store.tree.filter((m) => m.kind !== 'income'))
+const incomeMajors = computed(() => store.tree.filter((m) => m.kind === 'income'))
 
 // 数据目录与手动备份
 const dataPath = ref('')
@@ -47,10 +51,10 @@ onMounted(() => {
   loadDataPath()
 })
 
-function openCreateMajor() {
+function openCreateMajor(kind) {
   dialogMode = 'create-major'
-  dialogTarget = null
-  dialogTitle.value = '新增一级分类'
+  dialogTarget = { kind } // 记下要新建的分类类型
+  dialogTitle.value = kind === 'income' ? '新增收入分类' : '新增支出分类'
   dialogInput.value = ''
   dialogVisible.value = true
 }
@@ -79,7 +83,7 @@ async function submitDialog() {
   }
   try {
     if (dialogMode === 'create-major') {
-      await store.add(name, null)
+      await store.add(name, null, dialogTarget.kind)
     } else if (dialogMode === 'create-sub') {
       await store.add(name, dialogTarget.id)
     } else {
@@ -119,7 +123,6 @@ async function removeCategory(item) {
   <div class="page">
     <div class="page-header">
       <h2 class="page-title">分类管理</h2>
-      <el-button type="primary" :icon="Plus" @click="openCreateMajor">新增一级分类</el-button>
     </div>
 
     <el-alert
@@ -127,7 +130,7 @@ async function removeCategory(item) {
       type="info"
       :closable="false"
       show-icon
-      title="提示：点击小类标签可重命名，点标签上的 × 可删除；有支出记录的分类不允许删除"
+      title="提示：点击小类标签可重命名，点标签上的 × 可删除；有收支记录的分类不允许删除"
     />
 
     <div v-if="!store.loaded" class="loading-wrap">
@@ -135,33 +138,89 @@ async function removeCategory(item) {
     </div>
 
     <template v-else>
-      <el-card v-for="(major, mi) in store.tree" :key="major.id" shadow="never" class="major-card">
-        <div class="major-row">
-          <span class="major-name">{{ major.name }}</span>
-          <div class="major-actions">
-            <el-button size="small" @click="openCreateSub(major)">添加小类</el-button>
-            <el-button size="small" text @click="openRename(major)">重命名</el-button>
-            <el-button size="small" text type="danger" @click="removeCategory(major)">
-              删除
-            </el-button>
+      <!-- 支出分类 -->
+      <div class="kind-section" data-kind="expense">
+        <div class="kind-header">
+          <span class="kind-title">支出分类</span>
+          <el-button type="primary" :icon="Plus" size="small" @click="openCreateMajor('expense')">
+            新增支出分类
+          </el-button>
+        </div>
+        <el-card
+          v-for="(major, mi) in expenseMajors"
+          :key="major.id"
+          shadow="never"
+          class="major-card"
+        >
+          <div class="major-row">
+            <span class="major-name">{{ major.name }}</span>
+            <div class="major-actions">
+              <el-button size="small" @click="openCreateSub(major)">添加小类</el-button>
+              <el-button size="small" text @click="openRename(major)">重命名</el-button>
+              <el-button size="small" text type="danger" @click="removeCategory(major)">
+                删除
+              </el-button>
+            </div>
           </div>
+          <div class="sub-tags">
+            <el-tag
+              v-for="(sub, si) in major.children"
+              :key="sub.id"
+              :type="TAG_TYPES[(mi + si) % TAG_TYPES.length]"
+              closable
+              class="sub-tag"
+              title="点击重命名"
+              @click="openRename(sub)"
+              @close="removeCategory(sub)"
+            >
+              {{ sub.name }}
+            </el-tag>
+            <span v-if="!major.children.length" class="no-sub">暂无小类</span>
+          </div>
+        </el-card>
+      </div>
+
+      <!-- 收入分类 -->
+      <div class="kind-section income-section" data-kind="income">
+        <div class="kind-header">
+          <span class="kind-title">收入分类</span>
+          <el-button type="primary" :icon="Plus" size="small" @click="openCreateMajor('income')">
+            新增收入分类
+          </el-button>
         </div>
-        <div class="sub-tags">
-          <el-tag
-            v-for="(sub, si) in major.children"
-            :key="sub.id"
-            :type="TAG_TYPES[(mi + si) % TAG_TYPES.length]"
-            closable
-            class="sub-tag"
-            title="点击重命名"
-            @click="openRename(sub)"
-            @close="removeCategory(sub)"
-          >
-            {{ sub.name }}
-          </el-tag>
-          <span v-if="!major.children.length" class="no-sub">暂无小类</span>
-        </div>
-      </el-card>
+        <el-card
+          v-for="(major, mi) in incomeMajors"
+          :key="major.id"
+          shadow="never"
+          class="major-card"
+        >
+          <div class="major-row">
+            <span class="major-name">{{ major.name }}</span>
+            <div class="major-actions">
+              <el-button size="small" @click="openCreateSub(major)">添加小类</el-button>
+              <el-button size="small" text @click="openRename(major)">重命名</el-button>
+              <el-button size="small" text type="danger" @click="removeCategory(major)">
+                删除
+              </el-button>
+            </div>
+          </div>
+          <div class="sub-tags">
+            <el-tag
+              v-for="(sub, si) in major.children"
+              :key="sub.id"
+              :type="TAG_TYPES[(mi + si) % TAG_TYPES.length]"
+              closable
+              class="sub-tag"
+              title="点击重命名"
+              @click="openRename(sub)"
+              @close="removeCategory(sub)"
+            >
+              {{ sub.name }}
+            </el-tag>
+            <span v-if="!major.children.length" class="no-sub">暂无小类</span>
+          </div>
+        </el-card>
+      </div>
     </template>
 
     <!-- 数据与备份 -->
@@ -205,6 +264,23 @@ async function removeCategory(item) {
 
 .tips {
   margin-bottom: 16px;
+}
+
+.kind-section {
+  margin-bottom: 20px;
+}
+
+.kind-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.kind-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
 }
 
 .major-card {

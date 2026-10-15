@@ -23,6 +23,7 @@ function todayStr() {
 }
 
 const form = reactive({
+  type: 'expense', // expense=支出 / income=收入
   amountText: '', // 金额用字符串存输入内容，提交时再校验解析
   categoryPath: [], // 两级分类路径 [一级id, 二级id]
   date: todayStr(),
@@ -32,6 +33,11 @@ const saving = ref(false)
 const amountInputRef = ref(null)
 
 const AMOUNT_RE = /^\d+(\.\d{1,2})?$/
+
+// 切换收支类型时清空已选分类（分类体系不同）
+function onTypeChange() {
+  form.categoryPath = []
+}
 
 async function submit() {
   const text = form.amountText.trim()
@@ -70,9 +76,12 @@ async function submit() {
       amountCents,
       categoryId,
       date: form.date,
-      note: form.note
+      note: form.note,
+      type: form.type
     })
-    ElMessage.success(`已记录 ${formatCents(amountCents)}`)
+    ElMessage.success(
+      form.type === 'income' ? `已记录收入 ${formatCents(amountCents)}` : `已记录 ${formatCents(amountCents)}`
+    )
     // 重置表单，方便连续记账
     form.amountText = ''
     form.categoryPath = []
@@ -93,6 +102,13 @@ async function submit() {
     <h2 class="page-title">记一笔</h2>
     <el-card shadow="never" class="form-card">
       <el-form label-position="top">
+        <!-- 收支类型切换 -->
+        <el-form-item label="类型">
+          <el-radio-group v-model="form.type" @change="onTypeChange">
+            <el-radio-button value="expense">支出</el-radio-button>
+            <el-radio-button value="income">收入</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="金额（元）">
           <el-input
             ref="amountInputRef"
@@ -104,7 +120,11 @@ async function submit() {
           />
         </el-form-item>
         <el-form-item label="分类">
-          <CategoryCascader v-model="form.categoryPath" />
+          <CategoryCascader
+            v-model="form.categoryPath"
+            :kind="form.type"
+            :placeholder="form.type === 'income' ? '请选择收入分类（选到二级小类）' : '请选择分类（选到二级小类）'"
+          />
         </el-form-item>
         <el-form-item label="日期">
           <el-date-picker

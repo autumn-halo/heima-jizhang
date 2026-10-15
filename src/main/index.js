@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import iconIco from '../../resources/icon.ico?asset'
 import { openDatabase } from './db'
 import { backupIfNeeded } from './backup'
 import { registerIpc } from './ipc'
@@ -33,7 +34,12 @@ function createWindow() {
     title: '黑马记账',
     show: false,
     autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    // 窗口图标：Windows 用 ico（任务栏/标题栏更清晰），Linux 用 png，macOS 走 Dock 图标无需设置
+    ...(process.platform === 'win32'
+      ? { icon: iconIco }
+      : process.platform === 'linux'
+        ? { icon }
+        : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false

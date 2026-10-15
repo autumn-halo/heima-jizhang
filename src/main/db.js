@@ -3,7 +3,7 @@
 import { DatabaseSync } from 'node:sqlite'
 
 // 内置两级分类（首次运行时写入数据库；之后用户可在软件中增删改）
-const DEFAULT_CATEGORIES = [
+const DEFAULT_EXPENSE_CATEGORIES = [
   { name: '餐饮饮食', children: ['早餐', '午餐', '晚餐', '夜宵', '外卖', '零食饮料', '咖啡奶茶', '买菜食材', '请客聚餐'] },
   { name: '交通出行', children: ['公交地铁', '打车', '加油充电', '停车费', '火车高铁', '飞机票', '汽车保养维修'] },
   { name: '购物消费', children: ['服饰鞋包', '数码家电', '日用百货', '美妆个护', '家居家具', '图书文具', '宠物用品'] },
@@ -15,6 +15,13 @@ const DEFAULT_CATEGORIES = [
   { name: '通讯网络', children: ['手机话费', '流量费', '手机配件'] },
   { name: '金融保险', children: ['保险费', '贷款利息', '手续费', '信用卡年费'] },
   { name: '其他支出', children: ['罚款', '遗失', '其他'] }
+]
+
+// 内置收入分类（v1.1 新增：记收入功能）
+const DEFAULT_INCOME_CATEGORIES = [
+  { name: '工资收入', children: ['工资', '奖金', '加班费', '补贴'] },
+  { name: '理财收入', children: ['理财收益', '利息', '分红'] },
+  { name: '其他收入', children: ['红包', '兼职', '报销', '二手转让', '其他'] }
 ]
 
 /**
@@ -29,6 +36,9 @@ export function openDatabase(dbPath) {
   db.exec('PRAGMA foreign_keys = ON')
   // WAL 模式：读写并发更好、崩溃损坏风险更低
   db.exec('PRAGMA journal_mode = WAL')
+
+  // 数据库结构迁移（兼容旧版本账本文件）
+  migrate(db)
 
   // 分类表（两级：parent_id 为 NULL 表示一级大类，非 NULL 指向父分类）
   db.exec(`
@@ -50,7 +60,8 @@ export function openDatabase(dbPath) {
        ON categories(parent_id, name) WHERE parent_id IS NOT NULL`
   )
 
-  // 支出流水表（金额以"分"为单位存整数，杜绝浮点误差）
+  // 收支流水表（金额以"分"为单位存整数，杜绝浮点误差；
+  // type: expense=支出 / income=收入）
   db.exec(`
     CREATE TABLE IF NOT EXISTS expenses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,6 +69,7 @@ export function openDatabase(dbPath) {
       category_id INTEGER NOT NULL REFERENCES categories(id),
       expense_date TEXT NOT NULL,
       note TEXT NOT NULL DEFAULT '',
+      type TEXT NOT NULL DEFAULT 'expense',
       created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     )
   `)
@@ -76,19 +88,52 @@ export function openDatabase(dbPath) {
   return db
 }
 
-/** 首次运行时写入内置两级分类（表为空才播种） */
-function seedDefaultCategories(db) {
-  const { count } = db.prepare('SELECT COUNT(*) AS count FROM categories').get()
-  if (count > 0) return
+/**
+ * 数据库结构迁移：兼容旧版本账本文件（v1 → v1.1）
+ * - expenses 表增加 type 字段（expense=支出 / income=收入），旧记录默认为支出
+ * - categories 表增加 kind 字段（expense=支出分类 / income=收入分类），旧分类默认为支出分类
+ */
+function migrate(db) {
+  const expenseCols = db.prepare('PRAGMA table_info(expenses)').all().map((c) => c.name)
+  if (!expenseCols.includes('type')) {
+    db.exec("ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'")
+  }
+  const catCols = db.prepare('PRAGMA table_info(categories)').all().map((c) => c.name)
+  if (!catCols.includes('kind')) {
+    db.exec("ALTER TABLE categories ADD COLUMN kind TEXT NOT NULL DEFAULT 'expense'")
+  }
+}
 
-  const insert = db.prepare('INSERT INTO categories (name, parent_id, sort_order) VALUES (?, ?, ?)')
+/** 首次运行时写入内置两级分类（按收支类型分别判断，缺哪类补哪类） */
+function seedDefaultCategories(db) {
+  // 支出分类：11 大类 + 60 小类
+  const expenseCount = db
+    .prepare("SELECT COUNT(*) AS count FROM categories WHERE kind = 'expense'")
+    .get().count
+  if (expenseCount === 0) {
+    seedCategoryTree(db, DEFAULT_EXPENSE_CATEGORIES, 'expense')
+  }
+  // 收入分类：3 大类（v1.1 新增）
+  const incomeCount = db
+    .prepare("SELECT COUNT(*) AS count FROM categories WHERE kind = 'income'")
+    .get().count
+  if (incomeCount === 0) {
+    seedCategoryTree(db, DEFAULT_INCOME_CATEGORIES, 'income')
+  }
+}
+
+/** 把一组两级分类写入数据库（一个事务内完成） */
+function seedCategoryTree(db, tree, kind) {
+  const insert = db.prepare(
+    'INSERT INTO categories (name, parent_id, sort_order, kind) VALUES (?, ?, ?, ?)'
+  )
   db.exec('BEGIN')
   try {
-    DEFAULT_CATEGORIES.forEach((major, majorIndex) => {
+    tree.forEach((major, majorIndex) => {
       // 先插入一级大类，拿到它的 id 作为二级小类的 parent_id
-      const { lastInsertRowid } = insert.run(major.name, null, majorIndex + 1)
+      const { lastInsertRowid } = insert.run(major.name, null, majorIndex + 1, kind)
       major.children.forEach((name, subIndex) => {
-        insert.run(name, lastInsertRowid, subIndex + 1)
+        insert.run(name, lastInsertRowid, subIndex + 1, kind)
       })
     })
     db.exec('COMMIT')

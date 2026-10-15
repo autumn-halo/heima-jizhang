@@ -50,7 +50,13 @@ try {
   })
   await page.waitForSelector('.app-menu', { timeout: 15000 })
 
-  // 默认就在「记一笔」页
+  // 从导航进入「记一笔」页
+  await page.evaluate(() => {
+    const el = [...document.querySelectorAll('.el-menu-item')].find((e) =>
+      e.textContent.includes('记一笔')
+    )
+    el.click()
+  })
   await page.waitForSelector('.amount-input input', { timeout: 10000 })
 
   // 0. 日期默认应为今天
@@ -130,6 +136,35 @@ try {
   await assert(
     await page.evaluate(() => document.body.innerText.includes('已记录 ¥8.50')),
     '连续记第二笔成功（¥8.50）',
+    page
+  )
+
+  // 5. 记一笔收入：切换到「收入」，选「工资收入 → 工资」，金额 5000
+  const incomeToggle = await page.evaluate(() => {
+    const el = [...document.querySelectorAll('.el-radio-button')].find(
+      (e) => e.textContent.trim() === '收入'
+    )
+    if (!el) return false
+    el.click()
+    return true
+  })
+  await assert(incomeToggle, '切换到收入类型', page)
+  await page.waitForTimeout(400)
+  await page.fill('.amount-input input', '5000')
+  await page.evaluate(() => document.querySelector('.el-cascader').click())
+  await page.waitForSelector('.el-cascader-node__label', { timeout: 5000 })
+  await clickCascaderNode(page, '工资收入') // 展开一级
+  await page.waitForTimeout(500)
+  await clickCascaderNode(page, '工资') // 选中二级
+  await page.waitForTimeout(600)
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '保存')
+    btn.click()
+  })
+  await page.waitForTimeout(800)
+  await assert(
+    await page.evaluate(() => document.body.innerText.includes('已记录收入 ¥5,000.00')),
+    '记收入成功（工资 ¥5,000.00）',
     page
   )
 } finally {

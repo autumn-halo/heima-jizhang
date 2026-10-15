@@ -4,3 +4,8 @@ export function formatCents(cents) {
   const [int, dec] = yuan.split('.')
   return '¥' + int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + dec
 }
+
+/** 同上，但不带货币符号：123456 → 1,234.56（收支明细列表用） */
+export function formatCentsNoSymbol(cents) {
+  return formatCents(cents).slice(1)
+}

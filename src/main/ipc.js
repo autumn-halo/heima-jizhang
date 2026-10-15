@@ -39,11 +39,11 @@ function registerCategoryIpc(db) {
   ipcMain.handle('categories:list', () => {
     try {
       const rows = db
-        .prepare('SELECT id, name, parent_id FROM categories ORDER BY sort_order, id')
+        .prepare('SELECT id, name, parent_id, kind FROM categories ORDER BY sort_order, id')
         .all()
       // 组装两级树结构（三遍遍历，与行顺序完全无关：
       // 第一遍建立 id → 节点 索引；第二遍初始化所有一级大类；
-      // 第三遍再挂接子节点。只有一级大类带 children 数组，二级小类不带）
+      // 第三遍再挂接子节点。只有一级大类带 children 数组和 kind，二级小类不带）
       const nodeMap = new Map()
       for (const row of rows) {
         nodeMap.set(row.id, { id: row.id, name: row.name })
@@ -53,6 +53,7 @@ function registerCategoryIpc(db) {
         if (row.parent_id === null) {
           const node = nodeMap.get(row.id)
           node.children = []
+          node.kind = row.kind
           tree.push(node)
         }
       }
@@ -74,12 +75,14 @@ function registerCategoryIpc(db) {
       const parentId = payload?.parentId ?? null
       if (!name) return fail('分类名称不能为空')
       if (name.length > MAX_NAME_LENGTH) return fail(`分类名称不能超过 ${MAX_NAME_LENGTH} 个字`)
-      // 新增二级小类时，父分类必须是一级大类
+      let kind = payload?.kind === 'income' ? 'income' : 'expense'
+      // 新增二级小类时，父分类必须是一级大类，且小类继承父类的收支类型
       if (parentId !== null) {
         const parent = db
-          .prepare('SELECT id FROM categories WHERE id = ? AND parent_id IS NULL')
+          .prepare('SELECT id, kind FROM categories WHERE id = ? AND parent_id IS NULL')
           .get(parentId)
         if (!parent) return fail('父分类不存在，请刷新后重试')
+        kind = parent.kind
       }
       // 同级不允许重名
       const dup =
@@ -92,8 +95,8 @@ function registerCategoryIpc(db) {
         .prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories WHERE parent_id IS ?')
         .get(parentId)
       const { lastInsertRowid } = db
-        .prepare('INSERT INTO categories (name, parent_id, sort_order) VALUES (?, ?, ?)')
-        .run(name, parentId, m + 1)
+        .prepare('INSERT INTO categories (name, parent_id, sort_order, kind) VALUES (?, ?, ?, ?)')
+        .run(name, parentId, m + 1, kind)
       return ok({ id: Number(lastInsertRowid) })
     } catch (err) {
       return fail('新增分类失败：' + err.message)
@@ -156,21 +159,26 @@ function registerCategoryIpc(db) {
 
 // ---------------- 支出相关 ----------------
 
-/** 校验并规整一笔支出的参数，返回 { error } 或合法数据 */
+/** 校验并规整一笔收支的参数，返回 { error } 或合法数据 */
 function validateExpensePayload(payload, db) {
   const amountCents = payload?.amountCents
   if (!isValidAmount(amountCents)) return { error: '金额必须是大于 0 且不超过 9999999.99 元' }
   const categoryId = payload?.categoryId
   // 必须选择二级小类
   const cat = db
-    .prepare('SELECT id FROM categories WHERE id = ? AND parent_id IS NOT NULL')
+    .prepare('SELECT id, kind FROM categories WHERE id = ? AND parent_id IS NOT NULL')
     .get(categoryId)
   if (!cat) return { error: '请选择二级小类' }
+  const type = payload?.type === 'income' ? 'income' : 'expense'
+  // 分类的收支类型必须与记录的收支类型一致
+  if (cat.kind !== type) {
+    return { error: type === 'income' ? '请选择收入分类' : '请选择支出分类' }
+  }
   const date = String(payload?.date ?? '')
   if (!isValidDate(date)) return { error: '日期格式不正确' }
   const note = String(payload?.note ?? '').trim()
   if (note.length > MAX_NOTE_LENGTH) return { error: `备注不能超过 ${MAX_NOTE_LENGTH} 字` }
-  return { amountCents, categoryId, date, note }
+  return { amountCents, categoryId, date, note, type }
 }
 
 function registerExpenseIpc(db) {
@@ -180,9 +188,9 @@ function registerExpenseIpc(db) {
       if (v.error) return fail(v.error)
       const { lastInsertRowid } = db
         .prepare(
-          'INSERT INTO expenses (amount_cents, category_id, expense_date, note) VALUES (?, ?, ?, ?)'
+          'INSERT INTO expenses (amount_cents, category_id, expense_date, note, type) VALUES (?, ?, ?, ?, ?)'
         )
-        .run(v.amountCents, v.categoryId, v.date, v.note)
+        .run(v.amountCents, v.categoryId, v.date, v.note, v.type)
       return ok({ id: Number(lastInsertRowid) })
     } catch (err) {
       return fail('保存失败：' + err.message)
@@ -197,8 +205,8 @@ function registerExpenseIpc(db) {
       const v = validateExpensePayload(payload, db)
       if (v.error) return fail(v.error)
       db.prepare(
-        'UPDATE expenses SET amount_cents = ?, category_id = ?, expense_date = ?, note = ? WHERE id = ?'
-      ).run(v.amountCents, v.categoryId, v.date, v.note, id)
+        'UPDATE expenses SET amount_cents = ?, category_id = ?, expense_date = ?, note = ?, type = ? WHERE id = ?'
+      ).run(v.amountCents, v.categoryId, v.date, v.note, v.type, id)
       return ok(true)
     } catch (err) {
       return fail('修改失败：' + err.message)
@@ -216,9 +224,14 @@ function registerExpenseIpc(db) {
 
   ipcMain.handle('expenses:list', (_e, query) => {
     try {
-      const { month, categoryId, keyword, page = 1, pageSize = 20 } = query ?? {}
+      const { month, categoryId, keyword, type, page = 1, pageSize = 20 } = query ?? {}
       const where = []
       const params = []
+      // 按收支类型筛选
+      if (type === 'income' || type === 'expense') {
+        where.push('e.type = ?')
+        params.push(type)
+      }
       // 按月份筛选（expense_date 为 YYYY-MM-DD，前缀匹配即可）
       if (month && MONTH_RE.test(month)) {
         where.push('e.expense_date LIKE ?')
@@ -250,11 +263,12 @@ function registerExpenseIpc(db) {
         )
         .get(...params)
       const pageNum = Math.max(1, Number(page))
-      const pageSizeNum = Math.min(100, Math.max(1, Number(pageSize)))
+      // 上限 10000：首页明细需要一次取出全部记录做按月分组
+      const pageSizeNum = Math.min(10000, Math.max(1, Number(pageSize)))
       const offset = (pageNum - 1) * pageSizeNum
       const items = db
         .prepare(
-          `SELECT e.id, e.amount_cents, e.expense_date, e.note,
+          `SELECT e.id, e.amount_cents, e.expense_date, e.note, e.type,
                   sub.id AS sub_id, sub.name AS sub_name,
                   major.id AS major_id, major.name AS major_name
            FROM expenses e
@@ -276,38 +290,54 @@ function registerExpenseIpc(db) {
       const month = String(payload?.month ?? '')
       if (!MONTH_RE.test(month)) return fail('月份格式不正确')
       const monthPrefix = month + '-%'
-      // 本月总额与笔数
+      // 本月支出总额与笔数
       const total = db
         .prepare(
-          'SELECT COALESCE(SUM(amount_cents), 0) AS total, COUNT(*) AS count FROM expenses WHERE expense_date LIKE ?'
+          "SELECT COALESCE(SUM(amount_cents), 0) AS total, COUNT(*) AS count FROM expenses WHERE type = 'expense' AND expense_date LIKE ?"
+        )
+        .get(monthPrefix)
+      // 本月收入总额与笔数（v1.1 新增）
+      const income = db
+        .prepare(
+          "SELECT COALESCE(SUM(amount_cents), 0) AS total, COUNT(*) AS count FROM expenses WHERE type = 'income' AND expense_date LIKE ?"
         )
         .get(monthPrefix)
       // 日均支出 = 总额 ÷ 当月自然天数
       const [y, m] = month.split('-').map(Number)
       const daysInMonth = new Date(y, m, 0).getDate()
       const avgCents = Math.round(total.total / daysInMonth)
-      // 一级分类占比
+      // 一级分类占比（仅支出）
       const pie = db
         .prepare(
           `SELECT major.name AS name, SUM(e.amount_cents) AS totalCents
            FROM expenses e
            JOIN categories sub ON e.category_id = sub.id
            JOIN categories major ON sub.parent_id = major.id
-           WHERE e.expense_date LIKE ?
+           WHERE e.type = 'expense' AND e.expense_date LIKE ?
            GROUP BY major.id ORDER BY totalCents DESC`
         )
         .all(monthPrefix)
-      // 近 6 个月趋势（含当月）
+      // 近 6 个月支出趋势（含当月）
       const trend = []
       for (let i = 5; i >= 0; i--) {
         const d = new Date(y, m - 1 - i, 1)
         const mm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
         const r = db
-          .prepare('SELECT COALESCE(SUM(amount_cents), 0) AS total FROM expenses WHERE expense_date LIKE ?')
+          .prepare(
+            "SELECT COALESCE(SUM(amount_cents), 0) AS total FROM expenses WHERE type = 'expense' AND expense_date LIKE ?"
+          )
           .get(mm + '-%')
         trend.push({ month: mm, totalCents: r.total })
       }
-      return ok({ totalCents: total.total, count: total.count, avgCents, pie, trend })
+      return ok({
+        totalCents: total.total,
+        count: total.count,
+        avgCents,
+        incomeCents: income.total,
+        incomeCount: income.count,
+        pie,
+        trend
+      })
     } catch (err) {
       return fail('统计查询失败：' + err.message)
     }

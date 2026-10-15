@@ -46,6 +46,8 @@ try {
     }
   })
   console.log('菜单项数量:', menuInfo.count, '文字:', menuInfo.labels.join('/'))
+  // 支出流水应从导航中移除
+  console.log('导航检查:', menuInfo.labels.includes('支出流水') ? '✗ 支出流水仍在导航中!' : '已无支出流水选项 ✓')
 
   // 界面 logo 检查
   const logoCheck = await page.evaluate(() => {
@@ -72,8 +74,8 @@ try {
 
   // 逐个页面截图并核对页面标题
   const pages = [
-    ['记一笔', '01-record.png'],
-    ['支出流水', '02-transactions.png'],
+    ['首页', '01-home.png'],
+    ['记一笔', '02-record.png'],
     ['统计图表', '03-stats.png'],
     ['分类管理', '04-categories.png']
   ]
