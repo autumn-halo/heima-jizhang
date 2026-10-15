@@ -13,7 +13,12 @@ const accountsStore = useAccountsStore()
 onMounted(async () => {
   if (!store.loaded) store.load()
   if (!accountsStore.loaded) await accountsStore.load()
-  // 默认账户：优先记住上次使用的账户，否则用第一个账户
+  // 跟随用户习惯：延续上次记账的收支类型
+  const lastType = localStorage.getItem('heima-last-type')
+  if (lastType === 'income' || lastType === 'expense') {
+    form.type = lastType
+  }
+  // 跟随用户习惯：延续上次使用的账户（不存在则回退到第一个账户）
   const lastId = Number(localStorage.getItem('heima-last-account-id'))
   if (accountsStore.list.some((a) => a.id === lastId)) {
     form.accountId = lastId
@@ -92,10 +97,11 @@ async function submit() {
       type: form.type,
       accountId: form.accountId
     })
-    // 记住本次使用的账户
+    // 记住本次使用的账户与收支类型（下次打开页面自动延续）
     if (form.accountId) {
       localStorage.setItem('heima-last-account-id', String(form.accountId))
     }
+    localStorage.setItem('heima-last-type', form.type)
     ElMessage.success(
       form.type === 'income' ? `已记录收入 ${formatCents(amountCents)}` : `已记录 ${formatCents(amountCents)}`
     )

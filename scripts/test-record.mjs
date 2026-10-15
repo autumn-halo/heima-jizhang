@@ -50,8 +50,11 @@ try {
   })
   await page.waitForSelector('.app-menu', { timeout: 15000 })
 
-  // 清除上次使用的账户记忆，保证默认账户断言稳定
-  await page.evaluate(() => localStorage.removeItem('heima-last-account-id'))
+  // 清除上次使用的账户与类型记忆，保证默认断言稳定
+  await page.evaluate(() => {
+    localStorage.removeItem('heima-last-account-id')
+    localStorage.removeItem('heima-last-type')
+  })
   await page.reload()
   await page.waitForSelector('.app-menu', { timeout: 15000 })
 
@@ -65,7 +68,7 @@ try {
   await page.waitForSelector('.amount-input input', { timeout: 10000 })
   await page.waitForTimeout(600)
 
-  // 0.5 默认账户应为第一个内置账户（微信）
+  // 0.5 默认账户应为第一个内置账户（微信），默认类型为支出
   const defaultAccount = await page.evaluate(
     () => document.querySelector('.el-select')?.textContent.trim() ?? ''
   )
@@ -74,6 +77,13 @@ try {
     `默认账户为微信（实际：${defaultAccount}）`,
     page
   )
+  const defaultTypeActive = await page.evaluate(() => {
+    const el = [...document.querySelectorAll('.el-radio-button')].find(
+      (e) => e.textContent.trim() === '支出'
+    )
+    return el ? el.classList.contains('is-active') : false
+  })
+  await assert(defaultTypeActive, '默认收支类型为支出', page)
 
   // 0. 日期默认应为今天
   const today = new Date()
@@ -194,6 +204,25 @@ try {
   await assert(
     await page.evaluate(() => document.body.innerText.includes('已记录收入 ¥5,000.00')),
     '记收入成功（工资 ¥5,000.00）',
+    page
+  )
+
+  // 6. 习惯记忆：重新打开记一笔页，应延续上次的选择（收入 + 银行卡）
+  await page.reload()
+  await page.waitForSelector('.app-menu', { timeout: 15000 })
+  await page.waitForTimeout(1000)
+  const typeRemembered = await page.evaluate(() => {
+    const el = [...document.querySelectorAll('.el-radio-button')].find(
+      (e) => e.textContent.trim() === '收入'
+    )
+    return el ? el.classList.contains('is-active') : false
+  })
+  const accountRemembered = await page.evaluate(
+    () => document.querySelector('.el-select')?.textContent.trim() ?? ''
+  )
+  await assert(
+    typeRemembered && accountRemembered.includes('银行卡'),
+    `重开页面延续上次选择：收入 + 银行卡（实际：${accountRemembered}）`,
     page
   )
 } finally {
