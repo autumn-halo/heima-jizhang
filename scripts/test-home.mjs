@@ -15,51 +15,56 @@ const getSubId = seed.prepare(`
   SELECT sub.id FROM categories sub
   JOIN categories major ON sub.parent_id = major.id
   WHERE major.name = ? AND sub.name = ?`)
+const getAccountId = seed.prepare('SELECT id FROM accounts WHERE name = ?')
 const ins = seed.prepare(
-  'INSERT INTO expenses (amount_cents, category_id, expense_date, note, type) VALUES (?, ?, ?, ?, ?)'
+  'INSERT INTO expenses (amount_cents, category_id, expense_date, note, type, account_id) VALUES (?, ?, ?, ?, ?, ?)'
 )
+// [日期, 一级分类, 二级分类, 金额(分), 备注, 账户]（微信17 / 支付宝6 / 银行卡2）
 const expenseRows = [
-  ['2026-10-15', '学习教育', '学费培训', 50000, ''],
-  ['2026-10-14', '餐饮饮食', '请客聚餐', 26000, '部门聚餐'],
-  ['2026-10-13', '居住住房', '房租', 300000, ''],
-  ['2026-10-12', '通讯网络', '手机话费', 10000, ''],
-  ['2026-10-11', '居住住房', '电费', 15000, ''],
-  ['2026-10-10', '休闲娱乐', '电影演出', 6000, ''],
-  ['2026-10-09', '餐饮饮食', '咖啡奶茶', 1800, ''],
-  ['2026-10-08', '餐饮饮食', '外卖', 3000, ''],
-  ['2026-10-07', '交通出行', '打车', 2000, ''],
-  ['2026-10-06', '交通出行', '公交地铁', 400, ''],
-  ['2026-10-05', '餐饮饮食', '午餐', 2500, ''],
-  ['2026-10-04', '餐饮饮食', '早餐', 1234, ''],
-  ['2026-09-30', '购物消费', '图书文具', 6600, ''],
-  ['2026-09-28', '人情往来', '红包礼金', 50000, ''],
-  ['2026-09-25', '医疗健康', '体检疫苗', 20000, ''],
-  ['2026-09-20', '休闲娱乐', '游戏充值', 9800, ''],
-  ['2026-09-15', '居住住房', '水费', 4500, ''],
-  ['2026-09-10', '交通出行', '加油充电', 30000, ''],
-  ['2026-09-08', '餐饮饮食', '外卖', 3500, '加班聚餐'],
-  ['2026-09-05', '餐饮饮食', '早餐', 1000, ''],
-  ['2026-08-28', '交通出行', '火车高铁', 38000, ''],
-  ['2026-08-20', '休闲娱乐', '电影演出', 4500, ''],
-  ['2026-08-15', '居住住房', '电费', 14500, ''],
-  ['2026-08-10', '交通出行', '打车', 5500, '出差聚餐车费'],
-  ['2026-08-05', '餐饮饮食', '午餐', 2200, '']
+  ['2026-10-15', '学习教育', '学费培训', 50000, '', '银行卡'],
+  ['2026-10-14', '餐饮饮食', '请客聚餐', 26000, '部门聚餐', '微信'],
+  ['2026-10-13', '居住住房', '房租', 300000, '', '支付宝'],
+  ['2026-10-12', '通讯网络', '手机话费', 10000, '', '微信'],
+  ['2026-10-11', '居住住房', '电费', 15000, '', '微信'],
+  ['2026-10-10', '休闲娱乐', '电影演出', 6000, '', '微信'],
+  ['2026-10-09', '餐饮饮食', '咖啡奶茶', 1800, '', '微信'],
+  ['2026-10-08', '餐饮饮食', '外卖', 3000, '', '微信'],
+  ['2026-10-07', '交通出行', '打车', 2000, '', '支付宝'],
+  ['2026-10-06', '交通出行', '公交地铁', 400, '', '微信'],
+  ['2026-10-05', '餐饮饮食', '午餐', 2500, '', '微信'],
+  ['2026-10-04', '餐饮饮食', '早餐', 1234, '', '微信'],
+  ['2026-09-30', '购物消费', '图书文具', 6600, '', '微信'],
+  ['2026-09-28', '人情往来', '红包礼金', 50000, '', '微信'],
+  ['2026-09-25', '医疗健康', '体检疫苗', 20000, '', '银行卡'],
+  ['2026-09-20', '休闲娱乐', '游戏充值', 9800, '', '支付宝'],
+  ['2026-09-15', '居住住房', '水费', 4500, '', '微信'],
+  ['2026-09-10', '交通出行', '加油充电', 30000, '', '支付宝'],
+  ['2026-09-08', '餐饮饮食', '外卖', 3500, '加班聚餐', '微信'],
+  ['2026-09-05', '餐饮饮食', '早餐', 1000, '', '微信'],
+  ['2026-08-28', '交通出行', '火车高铁', 38000, '', '支付宝'],
+  ['2026-08-20', '休闲娱乐', '电影演出', 4500, '', '微信'],
+  ['2026-08-15', '居住住房', '电费', 14500, '', '微信'],
+  ['2026-08-10', '交通出行', '打车', 5500, '出差聚餐车费', '支付宝'],
+  ['2026-08-05', '餐饮饮食', '午餐', 2200, '', '微信']
 ]
+// 收入：银行卡2 / 微信2
 const incomeRows = [
-  ['2026-10-01', '工资收入', '工资', 1500000, '10月工资'],
-  ['2026-10-05', '理财收入', '理财收益', 50000, ''],
-  ['2026-09-01', '工资收入', '工资', 1500000, '9月工资'],
-  ['2026-09-15', '其他收入', '红包', 20000, '中秋红包']
+  ['2026-10-01', '工资收入', '工资', 1500000, '10月工资', '银行卡'],
+  ['2026-10-05', '理财收入', '理财收益', 50000, '', '微信'],
+  ['2026-09-01', '工资收入', '工资', 1500000, '9月工资', '银行卡'],
+  ['2026-09-15', '其他收入', '红包', 20000, '中秋红包', '微信']
 ]
 seed.exec('BEGIN')
 try {
-  for (const [date, major, sub, cents, note] of expenseRows) {
+  for (const [date, major, sub, cents, note, account] of expenseRows) {
     const { id } = getSubId.get(major, sub)
-    ins.run(cents, id, date, note, 'expense')
+    const acc = getAccountId.get(account)
+    ins.run(cents, id, date, note, 'expense', acc.id)
   }
-  for (const [date, major, sub, cents, note] of incomeRows) {
+  for (const [date, major, sub, cents, note, account] of incomeRows) {
     const { id } = getSubId.get(major, sub)
-    ins.run(cents, id, date, note, 'income')
+    const acc = getAccountId.get(account)
+    ins.run(cents, id, date, note, 'income', acc.id)
   }
   seed.exec('COMMIT')
 } catch (err) {
@@ -67,7 +72,7 @@ try {
   throw err
 }
 seed.close()
-console.log('已写入 25 笔支出 + 4 笔收入测试数据')
+console.log('已写入 25 笔支出 + 4 笔收入测试数据（按账户分配）')
 
 // ---------------- 第二步：启动应用测试 ----------------
 const appDir = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -152,8 +157,8 @@ try {
     [...document.querySelectorAll('.el-menu-item')].map((e) => e.textContent.trim())
   )
   await assert(
-    menuLabels.join('/') === '首页/记一笔/统计图表/分类管理',
-    `导航为 首页/记一笔/统计图表/分类管理（实际：${menuLabels.join('/')}）`,
+    menuLabels.join('/') === '首页/记一笔/账户管理/统计图表/分类管理',
+    `导航为 首页/记一笔/账户管理/统计图表/分类管理（实际：${menuLabels.join('/')}）`,
     page
   )
 
@@ -187,8 +192,11 @@ try {
   )
   const firstRow = await firstActiveRowText(page)
   await assert(
-    firstRow.includes('-500.00') && firstRow.includes('学费培训') && !firstRow.includes('¥'),
-    `明细首行 -500.00 学费培训 且无¥符号（实际：${firstRow}）`,
+    firstRow.includes('-500.00') &&
+      firstRow.includes('学费培训') &&
+      firstRow.includes('银行卡') &&
+      !firstRow.includes('¥'),
+    `明细首行 -500.00 学费培训·银行卡 且无¥符号（实际：${firstRow}）`,
     page
   )
   const monthSum = await page.evaluate(
@@ -223,6 +231,39 @@ try {
     `支出首行 -500.00 学费培训（实际：${firstExpenseRow}）`,
     page
   )
+
+  // 5.5 按账户筛选「支付宝」→ 3 个月分组，10月 2 条（房租、打车）
+  // （el-select 需要真实点击事件）
+  await page.click('.list-filters .el-select')
+  await page.waitForSelector('.el-select-dropdown__item', { timeout: 5000 })
+  const selectAlipay = await page.evaluate(() => {
+    const item = [...document.querySelectorAll('.el-select-dropdown__item')].find(
+      (e) => e.textContent.trim() === '支付宝'
+    )
+    if (!item) return false
+    item.click()
+    return true
+  })
+  await assert(selectAlipay, '选择账户筛选「支付宝」', page)
+  await page.waitForTimeout(800)
+  await assert((await monthCount(page)) === 3, '筛选支付宝后 3 个月分组', page)
+  await assert((await activeRowCount(page)) === 2, '支付宝 10月 2 条', page)
+  const alipayRow = await firstActiveRowText(page)
+  await assert(
+    alipayRow.includes('房租') && alipayRow.includes('支付宝'),
+    `支付宝首行为房租（实际：${alipayRow}）`,
+    page
+  )
+  // 清除账户筛选（悬停后点清除按钮）
+  await page.hover('.list-filters .el-select')
+  const cleared = await page.evaluate(() => {
+    const clear = document.querySelector('.list-filters .el-select .el-select__clear')
+    if (!clear) return false
+    clear.click()
+    return true
+  })
+  await assert(cleared, '清除账户筛选', page)
+  await page.waitForTimeout(800)
 
   // 6. 编辑「10月工资」收入：15000 → 16000，卡片联动 ¥16,500.00
   await clickTypeFilter(page, '收入')

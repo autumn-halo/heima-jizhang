@@ -9,6 +9,12 @@ const api = {
     update: (payload) => ipcRenderer.invoke('categories:update', payload),
     delete: (id) => ipcRenderer.invoke('categories:delete', id)
   },
+  accounts: {
+    list: () => ipcRenderer.invoke('accounts:list'),
+    create: (payload) => ipcRenderer.invoke('accounts:create', payload),
+    update: (payload) => ipcRenderer.invoke('accounts:update', payload),
+    delete: (id) => ipcRenderer.invoke('accounts:delete', id)
+  },
   expenses: {
     create: (payload) => ipcRenderer.invoke('expenses:create', payload),
     update: (payload) => ipcRenderer.invoke('expenses:update', payload),

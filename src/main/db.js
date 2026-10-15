@@ -24,6 +24,9 @@ const DEFAULT_INCOME_CATEGORIES = [
   { name: '其他收入', children: ['红包', '兼职', '报销', '二手转让', '其他'] }
 ]
 
+// 内置账户（v1.2 新增：多账户功能）
+const DEFAULT_ACCOUNTS = ['微信', '支付宝', '银行卡']
+
 /**
  * 打开（必要时创建）数据库，建表并播种内置分类
  * @param {string} dbPath 数据库文件完整路径
@@ -36,9 +39,6 @@ export function openDatabase(dbPath) {
   db.exec('PRAGMA foreign_keys = ON')
   // WAL 模式：读写并发更好、崩溃损坏风险更低
   db.exec('PRAGMA journal_mode = WAL')
-
-  // 数据库结构迁移（兼容旧版本账本文件）
-  migrate(db)
 
   // 分类表（两级：parent_id 为 NULL 表示一级大类，非 NULL 指向父分类）
   db.exec(`
@@ -60,8 +60,17 @@ export function openDatabase(dbPath) {
        ON categories(parent_id, name) WHERE parent_id IS NOT NULL`
   )
 
+  // 账户表（v1.2 多账户：微信/支付宝/银行卡等；必须先于 expenses 表创建）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )
+  `)
+
   // 收支流水表（金额以"分"为单位存整数，杜绝浮点误差；
-  // type: expense=支出 / income=收入）
+  // type: expense=支出 / income=收入；account_id: 所属账户，旧数据可为 NULL）
   db.exec(`
     CREATE TABLE IF NOT EXISTS expenses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,6 +79,7 @@ export function openDatabase(dbPath) {
       expense_date TEXT NOT NULL,
       note TEXT NOT NULL DEFAULT '',
       type TEXT NOT NULL DEFAULT 'expense',
+      account_id INTEGER REFERENCES accounts(id),
       created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     )
   `)
@@ -84,19 +94,42 @@ export function openDatabase(dbPath) {
     )
   `)
 
+  // 建表之后再迁移：老账本补字段（新账本建表时已包含全部字段，迁移自动跳过）
+  migrate(db)
+
   seedDefaultCategories(db)
+  seedDefaultAccounts(db)
   return db
 }
 
+/** 首次运行时写入内置账户（表为空才播种） */
+function seedDefaultAccounts(db) {
+  const { count } = db.prepare('SELECT COUNT(*) AS count FROM accounts').get()
+  if (count > 0) return
+  const insert = db.prepare('INSERT INTO accounts (name, sort_order) VALUES (?, ?)')
+  db.exec('BEGIN')
+  try {
+    DEFAULT_ACCOUNTS.forEach((name, i) => insert.run(name, i + 1))
+    db.exec('COMMIT')
+  } catch (err) {
+    db.exec('ROLLBACK')
+    throw err
+  }
+}
+
 /**
- * 数据库结构迁移：兼容旧版本账本文件（v1 → v1.1）
- * - expenses 表增加 type 字段（expense=支出 / income=收入），旧记录默认为支出
- * - categories 表增加 kind 字段（expense=支出分类 / income=收入分类），旧分类默认为支出分类
+ * 数据库结构迁移：兼容旧版本账本文件（v1 → v1.1 → v1.2）
+ * - v1.1：expenses 增加 type 字段（expense=支出 / income=收入），旧记录默认为支出
+ * - v1.1：categories 增加 kind 字段（expense=支出分类 / income=收入分类），旧分类默认为支出分类
+ * - v1.2：expenses 增加 account_id 字段（多账户），旧记录为 NULL（界面显示"未设置"）
  */
 function migrate(db) {
   const expenseCols = db.prepare('PRAGMA table_info(expenses)').all().map((c) => c.name)
   if (!expenseCols.includes('type')) {
     db.exec("ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'")
+  }
+  if (!expenseCols.includes('account_id')) {
+    db.exec('ALTER TABLE expenses ADD COLUMN account_id INTEGER REFERENCES accounts(id)')
   }
   const catCols = db.prepare('PRAGMA table_info(categories)').all().map((c) => c.name)
   if (!catCols.includes('kind')) {

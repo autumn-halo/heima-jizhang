@@ -4,9 +4,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import { formatCents, formatCentsNoSymbol } from '../utils/format'
 import { useCategoriesStore } from '../stores/categories'
+import { useAccountsStore } from '../stores/accounts'
 import CategoryCascader from '../components/CategoryCascader.vue'
 
 const store = useCategoriesStore()
+const accountsStore = useAccountsStore()
 
 // ---------------- 本月汇总 ----------------
 function currentMonth() {
@@ -40,6 +42,7 @@ const balanceText = computed(() => {
 
 // ---------------- 收支明细（按月折叠、按日分组） ----------------
 const typeFilter = ref('') // '' = 全部 / income = 收入 / expense = 支出
+const accountFilter = ref(null) // null = 全部账户
 const list = ref([]) // 全部明细记录（一次取出，前端分组）
 const loading = ref(false)
 const openMonths = ref([]) // 展开的月份（默认展开最新一个月）
@@ -49,6 +52,7 @@ async function loadList() {
   try {
     const data = await api.expenses.list({
       type: typeFilter.value || undefined,
+      accountId: accountFilter.value || undefined,
       page: 1,
       pageSize: 10000 // 一次取出全部记录，用于按月分组
     })
@@ -65,6 +69,7 @@ async function loadList() {
 }
 
 watch(typeFilter, loadList)
+watch(accountFilter, loadList)
 
 // 按月分组（服务器已按日期倒序返回，保持顺序即可）
 const grouped = computed(() => {
@@ -104,6 +109,7 @@ const editForm = reactive({
   id: null,
   type: 'expense',
   amountText: '',
+  accountId: null,
   categoryPath: [],
   date: '',
   note: ''
@@ -113,6 +119,7 @@ function openEdit(row) {
   editForm.id = row.id
   editForm.type = row.type
   editForm.amountText = (row.amount_cents / 100).toFixed(2)
+  editForm.accountId = row.account_id ?? null
   editForm.categoryPath = [row.major_id, row.sub_id]
   editForm.date = row.expense_date
   editForm.note = row.note
@@ -147,7 +154,8 @@ async function submitEdit() {
       categoryId,
       date: editForm.date,
       note: editForm.note,
-      type: editForm.type
+      type: editForm.type,
+      accountId: editForm.accountId
     })
     editVisible.value = false
     ElMessage.success('修改成功')
@@ -183,6 +191,7 @@ async function removeRow(row) {
 
 onMounted(() => {
   if (!store.loaded) store.load()
+  if (!accountsStore.loaded) accountsStore.load()
   loadSummary()
   loadList()
 })
@@ -214,11 +223,27 @@ onMounted(() => {
     <el-card shadow="never">
       <div class="list-header">
         <div class="list-title">收支明细</div>
-        <el-radio-group v-model="typeFilter" size="small">
-          <el-radio-button value="">全部</el-radio-button>
-          <el-radio-button value="income">收入</el-radio-button>
-          <el-radio-button value="expense">支出</el-radio-button>
-        </el-radio-group>
+        <div class="list-filters">
+          <el-select
+            v-model="accountFilter"
+            placeholder="全部账户"
+            clearable
+            size="small"
+            style="width: 130px"
+          >
+            <el-option
+              v-for="acc in accountsStore.list"
+              :key="acc.id"
+              :label="acc.name"
+              :value="acc.id"
+            />
+          </el-select>
+          <el-radio-group v-model="typeFilter" size="small">
+            <el-radio-button value="">全部</el-radio-button>
+            <el-radio-button value="income">收入</el-radio-button>
+            <el-radio-button value="expense">支出</el-radio-button>
+          </el-radio-group>
+        </div>
       </div>
 
       <div v-loading="loading">
@@ -249,6 +274,7 @@ onMounted(() => {
                 >
                   {{ row.type === 'income' ? '收入' : '支出' }}
                 </el-tag>
+                <span class="row-account">{{ row.account_name ?? '未设置' }}</span>
                 <span class="row-cat">{{ row.major_name }} / {{ row.sub_name }}</span>
                 <span class="row-note">{{ row.note }}</span>
                 <span class="row-spacer"></span>
@@ -284,6 +310,16 @@ onMounted(() => {
             placeholder="0.00"
             @keyup.enter="submitEdit"
           />
+        </el-form-item>
+        <el-form-item label="账户">
+          <el-select v-model="editForm.accountId" placeholder="请选择账户" clearable style="width: 100%">
+            <el-option
+              v-for="acc in accountsStore.list"
+              :key="acc.id"
+              :label="acc.name"
+              :value="acc.id"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="分类">
           <CategoryCascader
@@ -346,6 +382,14 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.list-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .list-title {
@@ -404,6 +448,15 @@ onMounted(() => {
 }
 
 .row-tag {
+  flex-shrink: 0;
+}
+
+.row-account {
+  font-size: 12px;
+  color: #606266;
+  background: #f0f2f5;
+  border-radius: 4px;
+  padding: 2px 6px;
   flex-shrink: 0;
 }
 

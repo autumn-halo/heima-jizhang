@@ -76,8 +76,9 @@ try {
   const pages = [
     ['首页', '01-home.png'],
     ['记一笔', '02-record.png'],
-    ['统计图表', '03-stats.png'],
-    ['分类管理', '04-categories.png']
+    ['账户管理', '03-accounts.png'],
+    ['统计图表', '04-stats.png'],
+    ['分类管理', '05-categories.png']
   ]
   for (let i = 0; i < pages.length; i++) {
     const [name, file] = pages[i]

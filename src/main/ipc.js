@@ -157,6 +157,70 @@ function registerCategoryIpc(db) {
   })
 }
 
+// ---------------- 账户相关（v1.2 多账户） ----------------
+
+function registerAccountIpc(db) {
+  ipcMain.handle('accounts:list', () => {
+    try {
+      const rows = db.prepare('SELECT id, name FROM accounts ORDER BY sort_order, id').all()
+      return ok(rows)
+    } catch (err) {
+      return fail('读取账户失败：' + err.message)
+    }
+  })
+
+  ipcMain.handle('accounts:create', (_e, payload) => {
+    try {
+      const name = String(payload?.name ?? '').trim()
+      if (!name) return fail('账户名称不能为空')
+      if (name.length > MAX_NAME_LENGTH) return fail(`账户名称不能超过 ${MAX_NAME_LENGTH} 个字`)
+      const dup = db.prepare('SELECT id FROM accounts WHERE name = ?').get(name)
+      if (dup) return fail('已存在同名账户')
+      const { m } = db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM accounts').get()
+      const { lastInsertRowid } = db
+        .prepare('INSERT INTO accounts (name, sort_order) VALUES (?, ?)')
+        .run(name, m + 1)
+      return ok({ id: Number(lastInsertRowid) })
+    } catch (err) {
+      return fail('新增账户失败：' + err.message)
+    }
+  })
+
+  ipcMain.handle('accounts:update', (_e, payload) => {
+    try {
+      const id = payload?.id
+      const name = String(payload?.name ?? '').trim()
+      if (!name) return fail('账户名称不能为空')
+      if (name.length > MAX_NAME_LENGTH) return fail(`账户名称不能超过 ${MAX_NAME_LENGTH} 个字`)
+      const target = db.prepare('SELECT id FROM accounts WHERE id = ?').get(id)
+      if (!target) return fail('账户不存在，请刷新后重试')
+      const dup = db.prepare('SELECT id FROM accounts WHERE name = ? AND id != ?').get(name, id)
+      if (dup) return fail('已存在同名账户')
+      db.prepare('UPDATE accounts SET name = ? WHERE id = ?').run(name, id)
+      return ok(true)
+    } catch (err) {
+      return fail('重命名失败：' + err.message)
+    }
+  })
+
+  ipcMain.handle('accounts:delete', (_e, id) => {
+    try {
+      const target = db.prepare('SELECT id FROM accounts WHERE id = ?').get(id)
+      if (!target) return fail('账户不存在，请刷新后重试')
+      const { c } = db
+        .prepare('SELECT COUNT(*) AS c FROM expenses WHERE account_id = ?')
+        .get(id)
+      if (c > 0) {
+        return fail(`该账户下有 ${c} 笔收支记录，暂时不能删除。请先删除这些记录，或把它们改到其他账户。`)
+      }
+      db.prepare('DELETE FROM accounts WHERE id = ?').run(id)
+      return ok(true)
+    } catch (err) {
+      return fail('删除账户失败：' + err.message)
+    }
+  })
+}
+
 // ---------------- 支出相关 ----------------
 
 /** 校验并规整一笔收支的参数，返回 { error } 或合法数据 */
@@ -174,11 +238,18 @@ function validateExpensePayload(payload, db) {
   if (cat.kind !== type) {
     return { error: type === 'income' ? '请选择收入分类' : '请选择支出分类' }
   }
+  // 账户：可选，选了必须存在
+  let accountId = payload?.accountId ?? null
+  if (accountId !== null) {
+    const acc = db.prepare('SELECT id FROM accounts WHERE id = ?').get(accountId)
+    if (!acc) return { error: '请选择有效的账户' }
+    accountId = acc.id
+  }
   const date = String(payload?.date ?? '')
   if (!isValidDate(date)) return { error: '日期格式不正确' }
   const note = String(payload?.note ?? '').trim()
   if (note.length > MAX_NOTE_LENGTH) return { error: `备注不能超过 ${MAX_NOTE_LENGTH} 字` }
-  return { amountCents, categoryId, date, note, type }
+  return { amountCents, categoryId, date, note, type, accountId }
 }
 
 function registerExpenseIpc(db) {
@@ -188,9 +259,9 @@ function registerExpenseIpc(db) {
       if (v.error) return fail(v.error)
       const { lastInsertRowid } = db
         .prepare(
-          'INSERT INTO expenses (amount_cents, category_id, expense_date, note, type) VALUES (?, ?, ?, ?, ?)'
+          'INSERT INTO expenses (amount_cents, category_id, expense_date, note, type, account_id) VALUES (?, ?, ?, ?, ?, ?)'
         )
-        .run(v.amountCents, v.categoryId, v.date, v.note, v.type)
+        .run(v.amountCents, v.categoryId, v.date, v.note, v.type, v.accountId)
       return ok({ id: Number(lastInsertRowid) })
     } catch (err) {
       return fail('保存失败：' + err.message)
@@ -205,8 +276,8 @@ function registerExpenseIpc(db) {
       const v = validateExpensePayload(payload, db)
       if (v.error) return fail(v.error)
       db.prepare(
-        'UPDATE expenses SET amount_cents = ?, category_id = ?, expense_date = ?, note = ?, type = ? WHERE id = ?'
-      ).run(v.amountCents, v.categoryId, v.date, v.note, v.type, id)
+        'UPDATE expenses SET amount_cents = ?, category_id = ?, expense_date = ?, note = ?, type = ?, account_id = ? WHERE id = ?'
+      ).run(v.amountCents, v.categoryId, v.date, v.note, v.type, v.accountId, id)
       return ok(true)
     } catch (err) {
       return fail('修改失败：' + err.message)
@@ -224,13 +295,19 @@ function registerExpenseIpc(db) {
 
   ipcMain.handle('expenses:list', (_e, query) => {
     try {
-      const { month, categoryId, keyword, type, page = 1, pageSize = 20 } = query ?? {}
+      const { month, categoryId, keyword, type, accountId, page = 1, pageSize = 20 } =
+        query ?? {}
       const where = []
       const params = []
       // 按收支类型筛选
       if (type === 'income' || type === 'expense') {
         where.push('e.type = ?')
         params.push(type)
+      }
+      // 按账户筛选（v1.2）
+      if (accountId) {
+        where.push('e.account_id = ?')
+        params.push(accountId)
       }
       // 按月份筛选（expense_date 为 YYYY-MM-DD，前缀匹配即可）
       if (month && MONTH_RE.test(month)) {
@@ -269,11 +346,13 @@ function registerExpenseIpc(db) {
       const items = db
         .prepare(
           `SELECT e.id, e.amount_cents, e.expense_date, e.note, e.type,
+                  e.account_id, acc.name AS account_name,
                   sub.id AS sub_id, sub.name AS sub_name,
                   major.id AS major_id, major.name AS major_name
            FROM expenses e
            JOIN categories sub ON e.category_id = sub.id
            JOIN categories major ON sub.parent_id = major.id
+           LEFT JOIN accounts acc ON e.account_id = acc.id
            ${whereSql}
            ORDER BY e.expense_date DESC, e.created_at DESC, e.id DESC
            LIMIT ? OFFSET ?`
@@ -371,6 +450,7 @@ function registerMiscIpc(db) {
  */
 export function registerIpc(db) {
   registerCategoryIpc(db)
+  registerAccountIpc(db)
   registerExpenseIpc(db)
   registerMiscIpc(db)
 }

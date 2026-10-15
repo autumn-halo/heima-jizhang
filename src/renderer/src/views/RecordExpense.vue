@@ -3,12 +3,23 @@ import { nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
 import { useCategoriesStore } from '../stores/categories'
+import { useAccountsStore } from '../stores/accounts'
 import { formatCents } from '../utils/format'
 import CategoryCascader from '../components/CategoryCascader.vue'
 
 const store = useCategoriesStore()
-onMounted(() => {
+const accountsStore = useAccountsStore()
+
+onMounted(async () => {
   if (!store.loaded) store.load()
+  if (!accountsStore.loaded) await accountsStore.load()
+  // 默认账户：优先记住上次使用的账户，否则用第一个账户
+  const lastId = Number(localStorage.getItem('heima-last-account-id'))
+  if (accountsStore.list.some((a) => a.id === lastId)) {
+    form.accountId = lastId
+  } else if (accountsStore.list.length) {
+    form.accountId = accountsStore.list[0].id
+  }
   // 自动聚焦金额输入框
   nextTick(() => amountInputRef.value?.focus())
 })
@@ -25,6 +36,7 @@ function todayStr() {
 const form = reactive({
   type: 'expense', // expense=支出 / income=收入
   amountText: '', // 金额用字符串存输入内容，提交时再校验解析
+  accountId: null, // 账户（v1.2 多账户）
   categoryPath: [], // 两级分类路径 [一级id, 二级id]
   date: todayStr(),
   note: ''
@@ -77,8 +89,13 @@ async function submit() {
       categoryId,
       date: form.date,
       note: form.note,
-      type: form.type
+      type: form.type,
+      accountId: form.accountId
     })
+    // 记住本次使用的账户
+    if (form.accountId) {
+      localStorage.setItem('heima-last-account-id', String(form.accountId))
+    }
     ElMessage.success(
       form.type === 'income' ? `已记录收入 ${formatCents(amountCents)}` : `已记录 ${formatCents(amountCents)}`
     )
@@ -118,6 +135,16 @@ async function submit() {
             inputmode="decimal"
             @keyup.enter="submit"
           />
+        </el-form-item>
+        <el-form-item label="账户">
+          <el-select v-model="form.accountId" placeholder="请选择账户" style="width: 100%">
+            <el-option
+              v-for="acc in accountsStore.list"
+              :key="acc.id"
+              :label="acc.name"
+              :value="acc.id"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="分类">
           <CategoryCascader

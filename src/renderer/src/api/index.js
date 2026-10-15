@@ -12,6 +12,12 @@ export const api = {
     update: (payload) => call(window.api.categories.update, payload),
     remove: (id) => call(window.api.categories.delete, id)
   },
+  accounts: {
+    list: () => call(window.api.accounts.list),
+    create: (payload) => call(window.api.accounts.create, payload),
+    update: (payload) => call(window.api.accounts.update, payload),
+    remove: (id) => call(window.api.accounts.delete, id)
+  },
   expenses: {
     create: (payload) => call(window.api.expenses.create, payload),
     update: (payload) => call(window.api.expenses.update, payload),

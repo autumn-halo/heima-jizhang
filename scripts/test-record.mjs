@@ -50,6 +50,11 @@ try {
   })
   await page.waitForSelector('.app-menu', { timeout: 15000 })
 
+  // 清除上次使用的账户记忆，保证默认账户断言稳定
+  await page.evaluate(() => localStorage.removeItem('heima-last-account-id'))
+  await page.reload()
+  await page.waitForSelector('.app-menu', { timeout: 15000 })
+
   // 从导航进入「记一笔」页
   await page.evaluate(() => {
     const el = [...document.querySelectorAll('.el-menu-item')].find((e) =>
@@ -58,6 +63,17 @@ try {
     el.click()
   })
   await page.waitForSelector('.amount-input input', { timeout: 10000 })
+  await page.waitForTimeout(600)
+
+  // 0.5 默认账户应为第一个内置账户（微信）
+  const defaultAccount = await page.evaluate(
+    () => document.querySelector('.el-select')?.textContent.trim() ?? ''
+  )
+  await assert(
+    defaultAccount.includes('微信'),
+    `默认账户为微信（实际：${defaultAccount}）`,
+    page
+  )
 
   // 0. 日期默认应为今天
   const today = new Date()
@@ -139,7 +155,7 @@ try {
     page
   )
 
-  // 5. 记一笔收入：切换到「收入」，选「工资收入 → 工资」，金额 5000
+  // 5. 记一笔收入：切换到「收入」，账户改为银行卡，选「工资收入 → 工资」，金额 5000
   const incomeToggle = await page.evaluate(() => {
     const el = [...document.querySelectorAll('.el-radio-button')].find(
       (e) => e.textContent.trim() === '收入'
@@ -149,6 +165,19 @@ try {
     return true
   })
   await assert(incomeToggle, '切换到收入类型', page)
+  await page.waitForTimeout(400)
+  // 切换账户为银行卡（el-select 需要真实点击事件）
+  await page.click('.el-select')
+  await page.waitForSelector('.el-select-dropdown__item', { timeout: 5000 })
+  const accountSwitched = await page.evaluate(() => {
+    const item = [...document.querySelectorAll('.el-select-dropdown__item')].find(
+      (e) => e.textContent.trim() === '银行卡'
+    )
+    if (!item) return false
+    item.click()
+    return true
+  })
+  await assert(accountSwitched, '账户切换为银行卡', page)
   await page.waitForTimeout(400)
   await page.fill('.amount-input input', '5000')
   await page.evaluate(() => document.querySelector('.el-cascader').click())
