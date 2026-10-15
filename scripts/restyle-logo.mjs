@@ -79,7 +79,8 @@ try {
     c1.width = side
     c1.height = side
     const x1 = c1.getContext('2d')
-    x1.filter = 'blur(1px) saturate(1.22)'
+    // 色彩增强：适度平滑 + 明显提升饱和度与对比度，让形象更鲜艳明快
+    x1.filter = 'blur(1px) saturate(1.55) contrast(1.08)'
     x1.drawImage(img, cx, cy, side, side, 0, 0, side, side)
 
     // 色彩平涂：每通道量化到 5 档（减少层次、更接近动漫平涂），并做暖色微调
