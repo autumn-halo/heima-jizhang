@@ -139,8 +139,11 @@
    按协作规则列方案、解释优缺点，由用户拍板后实施
 3. 每次更新完成后的固定流程：全量回归（scripts/ 测试）→ 更新本文件 →
    git 提交 → `npm run build:win` 打包 → 静默重装 → 清理测试数据
-4. 长期记忆：Claude 的 memory 目录里有本项目总览与关键坑（ELECTRON_RUN_AS_NODE 等）
-5. 备选需求清单（待用户随时翻牌）：
+4. 更新交付后同步防线：① `git push` 推送到 GitHub 云端（网络不通则改天补推，
+   本地存档不会丢）② 刷新本地备份副本 `D:\黑马记账-备份\`
+   （用 robocopy /E /XD node_modules dist out screenshots）
+5. 长期记忆：Claude 的 memory 目录里有本项目总览与关键坑（ELECTRON_RUN_AS_NODE 等）
+6. 备选需求清单（待用户随时翻牌）：
    - 月度预算设置与超支提醒
    - 数据导出 Excel
    - 各账户余额卡片（首页）
